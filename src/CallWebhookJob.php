@@ -6,6 +6,7 @@ use Exception;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\TransferStats;
 use Illuminate\Bus\Queueable;
@@ -38,6 +39,8 @@ class CallWebhookJob implements ShouldQueue
 
     public bool $verifySsl;
 
+    public bool $multipart = false;
+
     /** @var string */
     public $queue;
 
@@ -64,10 +67,19 @@ class CallWebhookJob implements ShouldQueue
 
         $lastAttempt = $this->attempts() >= $this->tries;
 
+        if ($this->multipart) {
+            foreach ($this->payload as $i => $item) {
+                if (isset($item['file']) && is_readable($item['file'])) {
+                    $this->payload[$i]['contents'] = Psr7\Utils::tryFopen($item['file'], 'r');
+                    unset($this->payload[$i]['file']);
+                }
+            }
+        }
+
         try {
             $body = strtoupper($this->httpVerb) === 'GET'
                 ? ['query' => $this->payload]
-                : ['body' => json_encode($this->payload)];
+                : ($this->multipart ? ['multipart' => $this->payload] : ['body' => json_encode($this->payload)]);
 
             $this->response = $client->request($this->httpVerb, $this->webhookUrl, array_merge([
                 'timeout' => $this->requestTimeout,
@@ -77,7 +89,6 @@ class CallWebhookJob implements ShouldQueue
                     $this->transferStats = $stats;
                 },
             ], $body));
-
             if (! Str::startsWith($this->response->getStatusCode(), 2)) {
                 throw new Exception('Webhook call failed');
             }
@@ -131,6 +142,7 @@ class CallWebhookJob implements ShouldQueue
         event(new $eventClass(
             $this->httpVerb,
             $this->webhookUrl,
+            $this->multipart,
             $this->payload,
             $this->headers,
             $this->meta,

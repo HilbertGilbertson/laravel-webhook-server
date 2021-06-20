@@ -11,6 +11,8 @@ abstract class WebhookCallEvent
 
     public string $webhookUrl;
 
+    public bool $multipart;
+
     public array $payload;
 
     public array $headers;
@@ -34,6 +36,7 @@ abstract class WebhookCallEvent
     public function __construct(
         string $httpVerb,
         string $webhookUrl,
+        bool $multipart,
         array $payload,
         array $headers,
         array $meta,
@@ -47,6 +50,7 @@ abstract class WebhookCallEvent
     ) {
         $this->httpVerb = $httpVerb;
         $this->webhookUrl = $webhookUrl;
+        $this->multipart = $multipart;
         $this->payload = $payload;
         $this->headers = $headers;
         $this->meta = $meta;
