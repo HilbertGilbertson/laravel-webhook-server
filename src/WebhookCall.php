@@ -263,6 +263,7 @@ class WebhookCall
         if ($this->delay) {
             $dispatched->delay(Carbon::now()->addSeconds($this->delay));
         }
+
         return $dispatched;
     }
 
