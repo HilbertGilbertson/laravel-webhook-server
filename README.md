@@ -1,8 +1,7 @@
 # Send webhooks from Laravel apps
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/spatie/laravel-webhook-server.svg?style=flat-square)](https://packagist.org/packages/spatie/laravel-webhook-server)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/spatie/laravel-webhook-server/run-tests?label=tests)
-[![Total Downloads](https://img.shields.io/packagist/dt/spatie/laravel-webhook-server.svg?style=flat-square)](https://packagist.org/packages/spatie/laravel-webhook-server)
+[![run-tests](https://github.com/spatie/laravel-webhook-server/actions/workflows/run-tests.yml/badge.svg)](https://github.com/spatie/laravel-webhook-server/actions/workflows/run-tests.yml)[![Total Downloads](https://img.shields.io/packagist/dt/spatie/laravel-webhook-server.svg?style=flat-square)](https://packagist.org/packages/spatie/laravel-webhook-server)
 
 A webhook is a way for an app to provide information to another app about a particular event. The way the two apps communicate is with a simple HTTP request. 
 
@@ -64,7 +63,7 @@ return [
     'headers' => [],
 
     /*
-     * If a call to a webhook takes longer that this amount of seconds
+     * If a call to a webhook takes longer this amount of seconds
      * the attempt will be considered failed.
      */
     'timeout_in_seconds' => 3,
@@ -78,12 +77,28 @@ return [
      * This class determines how many seconds there should be between attempts.
      */
     'backoff_strategy' => \Spatie\WebhookServer\BackoffStrategy\ExponentialBackoffStrategy::class,
+        
+    /*
+     * This class is used to dispatch webhooks onto the queue.
+     */
+    'webhook_job' => \Spatie\WebhookServer\CallWebhookJob::class,
 
     /*
      * By default we will verify that the ssl certificate of the destination
      * of the webhook is valid.
      */
     'verify_ssl' => true,
+    
+    /*
+     * When set to true, an exception will be thrown when the last attempt fails
+     */
+    'throw_exception_on_failure' => false,
+
+    /*
+     * When using Laravel Horizon you can specify tags that should be used on the
+     * underlying job that performs the webhook request.
+     */
+    'tags' => [],
 ];
 ```
 
@@ -101,25 +116,47 @@ WebhookCall::create()
    ->dispatch();
 ```
 
-This will send a post request to `https://other-app.com/webhooks`. The body of the request will be JSON encoded version of the array passed to `payload`. The request will have a header called `Signature` that will contain a signature the receiving app can use [to verify](https://github.com/spatie/laravel-webhook-server#how-signing-requests-works) the payload hasn't been tampered with. 
+This will send a post request to `https://other-app.com/webhooks`. The body of the request will be JSON encoded version of the array passed to `payload`. The request will have a header called `Signature` that will contain a signature the receiving app can use [to verify](https://github.com/spatie/laravel-webhook-server#how-signing-requests-works) the payload hasn't been tampered with. Dispatching a webhook call will also fire a `DispatchingWebhookCallEvent`.
 
 If the receiving app doesn't respond with a response code starting with `2`, the package will retry calling the webhook after 10 seconds. If that second attempt fails, the package will attempt to call the webhook a final time after 100 seconds. Should that attempt fail, the `FinalWebhookCallFailedEvent` will be raised.
 
 ### Send webhook synchronously
 
-If you would like to call the webhook immediately (synchronously), you may use the dispatchNow method. When using this method, the webhook will not be queued and will be run immediately. This can be helpfull in situation where sending the webhook is part of a bigger job that already has been queued.
+If you would like to call the webhook immediately (synchronously), you may use the dispatchSync method. When using this method, the webhook will not be queued and will be run immediately. This can be helpful in situations where sending the webhook is part of a bigger job that already has been queued.
 
 ```php
 WebhookCall::create()
    ...
-   ->dispatchNow();
+   ->dispatchSync();
 ```
 
-### How signing requests works
+### Conditionally sending webhooks
+
+If you would like to conditionally dispatch a webhook, you may use the `dispatchIf`, `dispatchUnless`, `dispatchSyncIf`, and `dispatchSyncUnless` methods:
+
+```php
+WebhookCall::create()
+   ...
+   ->dispatchIf($condition);
+
+WebhookCall::create()
+   ...
+   ->dispatchUnless($condition);
+
+WebhookCall::create()
+   ...
+   ->dispatchSyncIf($condition);
+
+WebhookCall::create()
+   ...
+   ->dispatchSyncUnless($condition);
+```
+
+### How signing requests work
 
 When setting up, it's common to generate, store, and share a secret between your app and the app that wants to receive webhooks. Generating the secret could be done with `Illuminate\Support\Str::random()`, but it's entirely up to you. The package will use the secret to sign a webhook call.
 
-By default, the package will add a header called `Signature` that will contain a signature the receiving app can use the payload hasn't been tampered with. This is how that signature is calculated:
+By default, the package will add a header called `Signature` that will contain a signature the receiving app can use if the payload hasn't been tampered with. This is how that signature is calculated:
 
 ```php
 // payload is the array passed to the `payload` method of the webhook
@@ -132,7 +169,7 @@ $signature = hash_hmac('sha256', $payloadJson, $secret);
 
 ### Skip signing request
 
-We don't recommend this, but if you don't want the web hook request to be signed call the `doNotSign` method.
+We don't recommend this, but if you don't want the webhook request to be signed call the `doNotSign` method.
 
 ```php
 WebhookCall::create()
@@ -159,7 +196,7 @@ interface Signer
 }
 ```
 
-After creating your signer, you can specify it's class name in the `signer` key of the `webhook-server` config file. Your signer will then be used by default in all webhook calls.
+After creating your signer, you can specify its class name in the `signer` key of the `webhook-server` config file. Your signer will then be used by default in all webhook calls.
 
 You can also specify a signer for a specific webhook call:
 
@@ -194,7 +231,7 @@ WebhookCall::create()
     ->dispatch();
 ```
 
-To not hammer the remote app we'll wait some time between each attempt. By default, we wait 10 seconds between the first and second attempt, 100 seconds between the third and the fourth, 1000 between the fourth and the fifth and so on. The maximum amount of seconds that we'll wait is 100 000, which is about 27 hours. This behavior is implemented in the default `ExponentialBackoffStrategy`.
+To not hammer the remote app we'll wait some time between each attempt. By default, we wait 10 seconds between the first and second attempts, 100 seconds between the third and the fourth, 1000 between the fourth and the fifth, and so on. The maximum amount of seconds that we'll wait is 100 000, which is about 27 hours. This behavior is implemented in the default `ExponentialBackoffStrategy`.
 
 You can define your own backoff strategy by creating a class that implements `Spatie\WebhookServer\BackoffStrategy\BackoffStrategy`. This is what that interface looks like:
 
@@ -207,7 +244,7 @@ interface BackoffStrategy
 }
 ```
 
-You can make your custom strategy the default strategy by specifying it's fully qualified class name in the `backoff_strategy` of the `webhook-server` config file. Alternatively, you can specify a strategy for a specific webhook like this.
+You can make your custom strategy the default strategy by specifying its fully qualified class name in the `backoff_strategy` of the `webhook-server` config file. Alternatively, you can specify a strategy for a specific webhook like this.
 
 ```php
 WebhookCall::create()
@@ -244,9 +281,41 @@ WebhookCall::create()
     ->dispatch();
 ```
 
+### Using a proxy
+
+You can direct webhooks through a proxy by specifying the `proxy` key in the `webhook-server` config file. To set a proxy for a specific
+request, you can use the `useProxy` call.
+
+```php
+WebhookCall::create()
+    ->useProxy('http://proxy.server:3128')
+    ...
+```
+
+### Using mutual TLS authentication
+
+To safeguard the integrity of webhook data transmission, it's critical to authenticate the intended recipient of your webhook payload. 
+Mutual TLS authentication serves as a robust method for this purpose. Contrary to standard TLS, where only the client verifies the server, 
+mutual TLS requires both the webhook endpoint (acting as the client) and the webhook provider (acting as the server) to authenticate each other. 
+This is achieved through an exchange of certificates during the TLS handshake, ensuring that both parties confirm each other's identity.
+
+> Note: If you need to include your own certificate authority, pass the certificate path to the `verifySsl()` method.
+
+```php
+WebhookCall::create()
+    ->mutualTls(
+        certPath: storage_path('path/to/cert.pem'), 
+        certPassphrase: 'optional_cert_passphrase', 
+        sslKeyPath: storage_path('path/to/key.pem'), 
+        sslKeyPassphrase: 'optional_key_passphrase'
+    )
+```
+
+The proxy specification follows the [guzzlehttp proxy format](https://docs.guzzlephp.org/en/stable/request-options.html#proxy)
+
 ### Verifying the SSL certificate of the receiving app
 
-When using an URL that starts with `https://` the package will verify if the SSL certificate of the receiving party is valid. If it is not, we will consider the webhook call failed. We don't recommend this, but you can turn off this verification by setting the `verify_ssl` key in the `webhook-server` config file to `false`.
+When using a URL that starts with `https://` the package will verify if the SSL certificate of the receiving party is valid. If it is not, we will consider the webhook call failed. We don't recommend this, but you can turn off this verification by setting the `verify_ssl` key in the `webhook-server` config file to `false`.
 
 You can also disable the verification per webhook call with the `doNotVerifySsl` method.
 
@@ -288,11 +357,36 @@ By default, the package will not log any exceptions that are thrown when sending
 
 To handle exceptions you need to create listeners for the `Spatie\WebhookServer\Events\WebhookCallFailedEvent` and/or `Spatie\WebhookServer\Events\FinalWebhookCallFailedEvent` events.
 
+#### Retry failed execution
+By default, failing jobs will be ignored. To throw an exception when the last attempt of a job fails, you can call `throwExceptionOnFailure` :
+```php
+WebhookCall::create()
+    ->throwExceptionOnFailure()
+    ...
+    ->dispatch();
+```
+or activate the `throw_exception_on_failure` global option of the `webhook-server` config file.
+
+### Sending raw string body instead of JSON
+
+By default, all webhooks will transform the payload into JSON. Instead of sending JSON, you can send any string by using the `sendRawBody(string $body)` option instead.
+
+Due to a type mismatch in the Signer API, it is currently not supported to sign raw data requests.
+When using the _sendRawBody_ option, you will receive a _string_ payload in the WebhookEvents.
+```php
+WebhookCall::create()
+    ->sendRawBody("<root>someXMLContent</root>")
+    ->doNotSign()
+    ...
+    ->dispatch();
+```
+
 ### Events
 
 The package fires these events:
+- `DispatchingWebhookCallEvent`: right before the webhook call will be dispatched to the queue.
 - `WebhookCallSucceededEvent`: the remote app responded with a `2xx` response code.
-- `WebhookCallFailedEvent`: the remote app responded with a non `2xx` response code, or it did not respond at all
+- `WebhookCallFailedEvent`: the remote app responded with a non `2xx` response code, or it did not respond at all.
 - `FinalWebhookCallFailedEvent`: the final attempt to call the webhook failed.
 
 All these events have these properties:
@@ -303,14 +397,58 @@ All these events have these properties:
 - `headers`: the headers that were sent. This array includes the signature header
 - `meta`: the array of values passed to the webhook with [the `meta` call](#adding-meta-information)
 - `tags`: the array of [tags](#adding-tags) used
+- `uuid`: a unique string to identify this call. This uuid will be the same for all attempts of a webhook call.
+
+Except for the `DispatchingWebhookCallEvent`, all events have these additional properties:
+
 - `attempt`: the attempt number
 - `response`: the response returned by the remote app. Can be an instance of `\GuzzleHttp\Psr7\Response` or `null`.
-- `uuid`: a unique string to identify this call. This uuid will be the same for all attempts of a webhook call.
 
 ## Testing
 
 ``` bash
 composer test
+```
+
+## Testing Webhooks
+When using the package in automated tests, you'll want to perform one of the following to ensure that no webhooks are sent out to genuine websites
+
+### Bus
+```php 
+use Illuminate\Support\Facades\Bus;
+use Spatie\WebhookServer\CallWebhookJob;
+use Tests\TestCase;
+
+class TestFile extends TestCase
+{
+    public function testJobIsDispatched()
+    {
+        Bus::fake();
+
+        ... Perform webhook call ...
+
+        Bus::assertDispatched(CallWebhookJob::class);
+    }
+}
+```
+
+### Queue
+```php 
+use Illuminate\Support\Facades\Queue;
+use Spatie\WebhookServer\CallWebhookJob;
+use Tests\TestCase;
+
+class TestFile extends TestCase
+{
+    public function testJobIsQueued()
+    {
+        Queue::fake();
+
+        ... Perform webhook call ...
+
+        Queue::assertPushed(CallWebhookJob::class);
+    }
+}
 ```
 
 ## Changelog
@@ -319,7 +457,7 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 
 ## Contributing
 
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
+Please see [CONTRIBUTING](https://github.com/spatie/.github/blob/main/CONTRIBUTING.md) for details.
 
 ### Security
 

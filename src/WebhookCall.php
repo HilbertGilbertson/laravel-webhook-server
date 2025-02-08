@@ -5,9 +5,11 @@ namespace Spatie\WebhookServer;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Support\Str;
 use Spatie\WebhookServer\BackoffStrategy\BackoffStrategy;
+use Spatie\WebhookServer\Events\DispatchingWebhookCallEvent;
 use Spatie\WebhookServer\Exceptions\CouldNotCallWebhook;
 use Spatie\WebhookServer\Exceptions\InvalidBackoffStrategy;
 use Spatie\WebhookServer\Exceptions\InvalidSigner;
+use Spatie\WebhookServer\Exceptions\InvalidWebhookJob;
 use Spatie\WebhookServer\Signer\Signer;
 
 class WebhookCall
@@ -31,8 +33,10 @@ class WebhookCall
         $config = config('webhook-server');
 
         return (new static())
+            ->useJob($config['webhook_job'])
             ->uuid(Str::uuid())
             ->onQueue($config['queue'])
+            ->onConnection($config['connection'] ?? null)
             ->useHttpVerb($config['http_verb'])
             ->maximumTries($config['tries'])
             ->useBackoffStrategy($config['backoff_strategy'])
@@ -40,12 +44,13 @@ class WebhookCall
             ->signUsing($config['signer'])
             ->withHeaders($config['headers'])
             ->withTags($config['tags'])
-            ->verifySsl($config['verify_ssl']);
+            ->verifySsl($config['verify_ssl'])
+            ->throwExceptionOnFailure($config['throw_exception_on_failure'])
+            ->useProxy($config['proxy']);
     }
 
     public function __construct()
     {
-        $this->callWebhookJob = app(CallWebhookJob::class);
     }
 
     public function url(string $url): self
@@ -78,9 +83,16 @@ class WebhookCall
         return $this->uuid;
     }
 
-    public function onQueue(string $queue): self
+    public function onQueue(?string $queue): self
     {
         $this->callWebhookJob->queue = $queue;
+
+        return $this;
+    }
+
+    public function onConnection(?string $connection): self
+    {
+        $this->callWebhookJob->connection = $connection;
 
         return $this;
     }
@@ -102,6 +114,16 @@ class WebhookCall
     public function maximumTries(int $tries): self
     {
         $this->callWebhookJob->tries = $tries;
+
+        return $this;
+    }
+
+    public function mutualTls(string $certPath, string $sslKeyPath, ?string $certPassphrase = null, ?string $sslKeyPassphrase = null): self
+    {
+        $this->callWebhookJob->cert = $certPath;
+        $this->callWebhookJob->certPassphrase = $certPassphrase;
+        $this->callWebhookJob->sslKey = $sslKeyPath;
+        $this->callWebhookJob->sslKeyPassphrase = $sslKeyPassphrase;
 
         return $this;
     }
@@ -149,7 +171,7 @@ class WebhookCall
         return $this;
     }
 
-    public function verifySsl(bool $verifySsl = true): self
+    public function verifySsl(bool|string $verifySsl = true): self
     {
         $this->callWebhookJob->verifySsl = $verifySsl;
 
@@ -159,6 +181,20 @@ class WebhookCall
     public function doNotVerifySsl(): self
     {
         $this->verifySsl(false);
+
+        return $this;
+    }
+
+    public function throwExceptionOnFailure(bool $throwExceptionOnFailure = true): self
+    {
+        $this->callWebhookJob->throwExceptionOnFailure = $throwExceptionOnFailure;
+
+        return $this;
+    }
+
+    public function useProxy(array|string|null $proxy = null): self
+    {
+        $this->callWebhookJob->proxy = $proxy;
 
         return $this;
     }
@@ -177,28 +213,75 @@ class WebhookCall
         return $this;
     }
 
+    public function useJob(string $webhookJobClass): self
+    {
+        $job = app($webhookJobClass);
+
+        if (! $job instanceof CallWebhookJob) {
+            throw InvalidWebhookJob::doesNotExtendCallWebhookJob($webhookJobClass);
+        }
+
+        $this->callWebhookJob = $job;
+
+        return $this;
+    }
+
     public function dispatch(): PendingDispatch
     {
         $this->prepareForDispatch();
 
+        event(new DispatchingWebhookCallEvent(
+            $this->callWebhookJob->httpVerb,
+            $this->callWebhookJob->webhookUrl,
+            $this->callWebhookJob->payload,
+            $this->callWebhookJob->headers,
+            $this->callWebhookJob->meta,
+            $this->callWebhookJob->tags,
+            $this->callWebhookJob->uuid,
+        ));
+
         return dispatch($this->callWebhookJob);
     }
 
-    /**
-     * @deprecated Will be removed in a future version in favor of dispatchSync
-     */
-    public function dispatchNow(): void
+    public function dispatchIf($condition): PendingDispatch|null
     {
-        $this->dispatchSync();
+        if ($condition) {
+            return $this->dispatch();
+        }
+
+        return null;
+    }
+
+    public function dispatchUnless($condition): PendingDispatch|null
+    {
+        return $this->dispatchIf(! $condition);
     }
 
     public function dispatchSync(): void
     {
         $this->prepareForDispatch();
 
-        function_exists('dispatch_sync')
-            ? dispatch_sync($this->callWebhookJob)
-            : dispatch_now($this->callWebhookJob);
+        dispatch_sync($this->callWebhookJob);
+    }
+
+    public function dispatchSyncIf($condition): void
+    {
+        if ($condition) {
+            $this->dispatchSync();
+        }
+    }
+
+    public function dispatchSyncUnless($condition): void
+    {
+        $this->dispatchSyncIf(! $condition);
+    }
+
+    public function sendRawBody(string $body): self
+    {
+        $this->callWebhookJob->payload = $body;
+        $this->callWebhookJob->outputType = "RAW";
+
+        return $this;
     }
 
     protected function prepareForDispatch(): void
@@ -222,7 +305,7 @@ class WebhookCall
             return $headers;
         }
 
-        $signature = $this->signer->calculateSignature($this->payload, $this->secret);
+        $signature = $this->signer->calculateSignature($this->callWebhookJob->webhookUrl, $this->payload, $this->secret);
 
         $headers[$this->signer->signatureHeaderName()] = $signature;
 

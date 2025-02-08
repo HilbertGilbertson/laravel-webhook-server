@@ -2,6 +2,198 @@
 
 All notable changes to `laravel-webhook-server` will be documented in this file
 
+## 3.8.2 - 2024-12-16
+
+### What's Changed
+
+* Fix CallWebhookJob behaviour when throwExceptionOnFailure is true by @cristian-fleischer in https://github.com/spatie/laravel-webhook-server/pull/161
+
+### New Contributors
+
+* @cristian-fleischer made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/161
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.8.1...3.8.2
+
+## 3.8.1 - 2024-02-12
+
+### What's Changed
+
+* Add support for laravel 11 by @shuvroroy in https://github.com/spatie/laravel-webhook-server/pull/154
+* Corrected typos in README.md and webhook-server.php by @OussamaMater in https://github.com/spatie/laravel-webhook-server/pull/151
+
+### New Contributors
+
+* @OussamaMater made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/151
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.8.0...3.8.1
+
+## 3.8.0 - 2023-11-27
+
+3.8.0
+
+### What's Changed
+
+* Add event that is being fired upon the webhook's dispatch by @thannaske in https://github.com/spatie/laravel-webhook-server/pull/150
+
+### New Contributors
+
+* @thannaske made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/150
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.7.0...3.8.0
+
+## 3.7.0 - 2023-11-20
+
+### What's Changed
+
+- Adds support for mutual TLS by @JonErickson in https://github.com/spatie/laravel-webhook-server/pull/149
+
+### New Contributors
+
+- @JonErickson made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/149
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.6.0...3.7.0
+
+## 3.6.0 - 2023-09-25
+
+### What's Changed
+
+- Fix webhook event type for raw body by @DotNetSimon in https://github.com/spatie/laravel-webhook-server/pull/147
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.5.0...3.6.0
+
+## 3.5.0 - 2023-09-12
+
+### What's Changed
+
+- Webhook option to allow sending a raw body instead of array -> json. by @DotNetSimon in https://github.com/spatie/laravel-webhook-server/pull/146
+
+### New Contributors
+
+- @DotNetSimon made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/146
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.4.3...3.5.0
+
+## 3.4.3 - 2023-03-17
+
+### What's Changed
+
+- Change to protected properties `$response`, `$errorType` and `$errorMessage` in `CallWebhookJob`  by @Kazuto in https://github.com/spatie/laravel-webhook-server/pull/143
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.4.2...3.4.3
+
+## 3.4.2 - 2023-01-25
+
+### What's Changed
+
+- Fixes a couple of minor typographical errors. by @cxj in https://github.com/spatie/laravel-webhook-server/pull/141
+- support Laravel 10.0 by @hihuangwei in https://github.com/spatie/laravel-webhook-server/pull/142
+
+### New Contributors
+
+- @cxj made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/141
+- @hihuangwei made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/142
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.4.1...3.4.2
+
+## 3.4.1 - 2023-01-10
+
+### What's Changed
+
+- Add PHP 8.2 Support by @patinthehat in https://github.com/spatie/laravel-webhook-server/pull/138
+- Convert all tests to pest by @alexmanase in https://github.com/spatie/laravel-webhook-server/pull/139
+- Refactored Request to Method by @JamesFreeman in https://github.com/spatie/laravel-webhook-server/pull/140
+
+### New Contributors
+
+- @patinthehat made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/138
+- @alexmanase made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/139
+- @JamesFreeman made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/140
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.4.0...3.4.1
+
+## 3.4.0 - 2022-11-16
+
+### What's Changed
+
+- Add proxy option by @andycowan in https://github.com/spatie/laravel-webhook-server/pull/136
+
+### New Contributors
+
+- @andycowan made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/136
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.3.0...3.4.0
+
+## 3.3.0 - 2022-11-09
+
+### What's Changed
+
+- Add missing config documentation to readme by @Kazuto in https://github.com/spatie/laravel-webhook-server/pull/134
+- Add option for configurable Webhook Job by @Kazuto in https://github.com/spatie/laravel-webhook-server/pull/135
+
+### New Contributors
+
+- @Kazuto made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/134
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.2.1...3.3.0
+
+## 3.2.1 - 2022-07-29
+
+### What's Changed
+
+- Allow sub-classes of `CallWebhookJob` to use a `GuzzleHttp\Client` specific for outgoing webhooks by @bezhermoso in https://github.com/spatie/laravel-webhook-server/pull/125
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.2.0...3.2.1
+
+## 3.2.0 - 2022-06-24
+
+### What's Changed
+
+- feat: add dispatchIf, dispatchUnless, dispatchSyncIf and dispatchSync… by @regnerisch in https://github.com/spatie/laravel-webhook-server/pull/124
+
+### New Contributors
+
+- @regnerisch made their first contribution in https://github.com/spatie/laravel-webhook-server/pull/124
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.1.2...3.2.0
+
+## 3.1.2 - 2022-01-26
+
+- support Laravel 9
+
+## 3.1.1 - 2021-12-10
+
+## What's Changed
+
+- Include Exception with Laravel queue failures by @awarrenlove in https://github.com/spatie/laravel-webhook-server/pull/114
+
+**Full Changelog**: https://github.com/spatie/laravel-webhook-server/compare/3.1.0...3.1.1
+
+## 3.0.0 - 2021-09-10
+
+- support using webhook URLs as part of webhook signatures (#98)
+
+The only breaking change in this release is the addidation of `string $webhookUrl` to the `calculateSignature` method of the `Signer` interface.
+If you have a custom `Signer` in your project, add that `$webhookUrl` to the `calculateSignature` method.
+
+## 2.1.1 - 2021-08-27
+
+- add ability to use default queue of connection (#94)
+
+## 2.1.0 - 2021-08-01
+
+- allow setting queue connection (#92)
+
+## 2.0.1 - 2021-07-23
+
+- fix tests
+
+## 2.0.0 - 2021-07-23
+
+- require Laravel 8
+- require PHP 8
+
+No changes to the API were made, so you can safely upgrade from v1 to v2
+
 ## 1.13.0 - 2021-04-28
 
 - add `dispatchSync`

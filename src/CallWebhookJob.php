@@ -4,6 +4,7 @@ namespace Spatie\WebhookServer;
 
 use Exception;
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Response;
@@ -17,6 +18,7 @@ use Illuminate\Support\Str;
 use Spatie\WebhookServer\Events\FinalWebhookCallFailedEvent;
 use Spatie\WebhookServer\Events\WebhookCallFailedEvent;
 use Spatie\WebhookServer\Events\WebhookCallSucceededEvent;
+use Throwable;
 
 class CallWebhookJob implements ShouldQueue
 {
@@ -26,9 +28,19 @@ class CallWebhookJob implements ShouldQueue
 
     public string $httpVerb;
 
+    public string|array|null $proxy = null;
+
     public int $tries;
 
     public int $requestTimeout;
+
+    public ?string $cert = null;
+
+    public ?string $certPassphrase = null;
+
+    public ?string $sslKey = null;
+
+    public ?string $sslKeyPassphrase = null;
 
     public string $backoffStrategyClass;
 
@@ -36,12 +48,14 @@ class CallWebhookJob implements ShouldQueue
 
     public array $headers = [];
 
-    public bool $verifySsl;
+    public string|bool $verifySsl;
 
-    /** @var string */
-    public $queue;
+    public bool $throwExceptionOnFailure;
 
-    public array $payload = [];
+    /** @var string|null */
+    public $queue = null;
+
+    public array|string $payload = [];
 
     public array $meta = [];
 
@@ -49,34 +63,26 @@ class CallWebhookJob implements ShouldQueue
 
     public string $uuid = '';
 
-    private ?Response $response = null;
+    public string $outputType = "JSON";
 
-    private ?string $errorType = null;
+    protected ?Response $response = null;
 
-    private ?string $errorMessage = null;
+    protected ?string $errorType = null;
 
-    private ?TransferStats $transferStats = null;
+    protected ?string $errorMessage = null;
+
+    protected ?TransferStats $transferStats = null;
 
     public function handle()
     {
-        /** @var \GuzzleHttp\Client $client */
-        $client = app(Client::class);
-
         $lastAttempt = $this->attempts() >= $this->tries;
 
         try {
             $body = strtoupper($this->httpVerb) === 'GET'
                 ? ['query' => $this->payload]
-                : ['body' => json_encode($this->payload)];
+                : ['body' => $this->generateBody()];
 
-            $this->response = $client->request($this->httpVerb, $this->webhookUrl, array_merge([
-                'timeout' => $this->requestTimeout,
-                'verify' => $this->verifySsl,
-                'headers' => $this->headers,
-                'on_stats' => function (TransferStats $stats) {
-                    $this->transferStats = $stats;
-                },
-            ], $body));
+            $this->response = $this->createRequest($body);
 
             if (! Str::startsWith($this->response->getStatusCode(), 2)) {
                 throw new Exception('Webhook call failed');
@@ -107,23 +113,53 @@ class CallWebhookJob implements ShouldQueue
             }
 
             $this->dispatchEvent(WebhookCallFailedEvent::class);
-        }
 
-        if ($lastAttempt) {
-            $this->dispatchEvent(FinalWebhookCallFailedEvent::class);
+            if ($lastAttempt || $this->shouldBeRemovedFromQueue()) {
+                $this->dispatchEvent(FinalWebhookCallFailedEvent::class);
 
-            $this->delete();
+                $this->throwExceptionOnFailure ? $this->fail($exception) : $this->delete();
+            }
         }
     }
 
-    public function tags()
+    public function tags(): array
     {
         return $this->tags;
     }
 
-    public function getResponse()
+    public function getResponse(): ?Response
     {
         return $this->response;
+    }
+
+    protected function getClient(): ClientInterface
+    {
+        return app(Client::class);
+    }
+
+    protected function createRequest(array $body): Response
+    {
+        $client = $this->getClient();
+
+        return $client->request($this->httpVerb, $this->webhookUrl, array_merge(
+            [
+            'timeout' => $this->requestTimeout,
+            'verify' => $this->verifySsl,
+            'headers' => $this->headers,
+            'on_stats' => function (TransferStats $stats) {
+                $this->transferStats = $stats;
+            },
+        ],
+            $body,
+            is_null($this->proxy) ? [] : ['proxy' => $this->proxy],
+            is_null($this->cert) ? [] : ['cert' => [$this->cert, $this->certPassphrase]],
+            is_null($this->sslKey) ? [] : ['ssl_key' => [$this->sslKey, $this->sslKeyPassphrase]]
+        ));
+    }
+
+    protected function shouldBeRemovedFromQueue(): bool
+    {
+        return false;
     }
 
     private function dispatchEvent(string $eventClass)
@@ -142,5 +178,20 @@ class CallWebhookJob implements ShouldQueue
             $this->uuid,
             $this->transferStats
         ));
+    }
+
+    private function generateBody(): string
+    {
+        return match ($this->outputType) {
+            "RAW" => $this->payload,
+            default => json_encode($this->payload),
+        };
+    }
+
+    public function failed(Throwable $e)
+    {
+        if ($this->throwExceptionOnFailure) {
+            throw $e;
+        }
     }
 }
