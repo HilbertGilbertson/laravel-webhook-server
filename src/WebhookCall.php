@@ -3,6 +3,7 @@
 namespace Spatie\WebhookServer;
 
 use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Spatie\WebhookServer\BackoffStrategy\BackoffStrategy;
 use Spatie\WebhookServer\Events\DispatchingWebhookCallEvent;
@@ -23,6 +24,8 @@ class WebhookCall
     protected Signer $signer;
 
     protected array $headers = [];
+
+    protected int $delay = 0;
 
     private array $payload = [];
 
@@ -171,6 +174,21 @@ class WebhookCall
         return $this;
     }
 
+    public function multipart(): self
+    {
+        unset($this->headers['Content-Type']);
+        $this->callWebhookJob->multipart = true;
+
+        return $this;
+    }
+
+    public function delay($delay): self
+    {
+        $this->delay = $delay;
+
+        return $this;
+    }
+
     public function verifySsl(bool|string $verifySsl = true): self
     {
         $this->callWebhookJob->verifySsl = $verifySsl;
@@ -233,6 +251,7 @@ class WebhookCall
         event(new DispatchingWebhookCallEvent(
             $this->callWebhookJob->httpVerb,
             $this->callWebhookJob->webhookUrl,
+            $this->callWebhookJob->multipart,
             $this->callWebhookJob->payload,
             $this->callWebhookJob->headers,
             $this->callWebhookJob->meta,
@@ -240,7 +259,11 @@ class WebhookCall
             $this->callWebhookJob->uuid,
         ));
 
-        return dispatch($this->callWebhookJob);
+        $dispatched = dispatch($this->callWebhookJob);
+        if ($this->delay) {
+            $dispatched->delay(Carbon::now()->addSeconds($this->delay));
+        }
+        return $dispatched;
     }
 
     public function dispatchIf($condition): PendingDispatch|null

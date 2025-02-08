@@ -7,6 +7,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\TransferStats;
 use Illuminate\Bus\Queueable;
@@ -50,6 +51,8 @@ class CallWebhookJob implements ShouldQueue
 
     public string|bool $verifySsl;
 
+    public bool $multipart = false;
+
     public bool $throwExceptionOnFailure;
 
     /** @var string|null */
@@ -77,10 +80,19 @@ class CallWebhookJob implements ShouldQueue
     {
         $lastAttempt = $this->attempts() >= $this->tries;
 
+        if ($this->multipart) {
+            foreach ($this->payload as $i => $item) {
+                if (isset($item['file']) && is_readable($item['file'])) {
+                    $this->payload[$i]['contents'] = Psr7\Utils::tryFopen($item['file'], 'r');
+                    unset($this->payload[$i]['file']);
+                }
+            }
+        }
+
         try {
             $body = strtoupper($this->httpVerb) === 'GET'
                 ? ['query' => $this->payload]
-                : ['body' => $this->generateBody()];
+                : ($this->multipart ? ['multipart' => $this->payload] : ['body' => $this->generateBody()]);
 
             $this->response = $this->createRequest($body);
 
@@ -167,6 +179,7 @@ class CallWebhookJob implements ShouldQueue
         event(new $eventClass(
             $this->httpVerb,
             $this->webhookUrl,
+            $this->multipart,
             $this->payload,
             $this->headers,
             $this->meta,
